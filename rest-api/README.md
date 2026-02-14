@@ -1,30 +1,28 @@
 # REST API Specification
 
- In development: OpenAPI 3.0 specification
-
-## Endpoints
-
 Intent REST API follows RESTful patterns similar to Discord but with cleaner design.
 
-### Base URL
+## Base URL
+
 ```
 https://api.intent.chat/v1
 ```
 
-### Authentication
+## Authentication
+
+All requests require a bearer token:
+
 ```
 Authorization: Bearer <token>
 ```
 
-### Rate Limiting
-Coming soon
+## Documentation
 
-### Endpoints (Placeholder)
+- [**Core Resources**](resources.md) - Servers, Channels, Messages (full CRUD operations)
+- **Rate Limiting** - In development
+- **User Operations** - In development
+- **Role Management** - In development
 
-- `/servers` - Server management
-- `/channels` - Channel operations
-- `/messages` - Message CRUD
-- `/users` - User operations
-- `/roles` - Role management
+## OpenAPI Specification
 
-Full OpenAPI spec in development.
+OpenAPI 3.0 schema in development.
