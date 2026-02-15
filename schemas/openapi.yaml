@@ -1,0 +1,939 @@
+openapi: 3.1.0
+info:
+  title: Intent API
+  version: 1.0.0
+  description: |
+    Intent is a privacy-first Discord alternative with E2EE messaging and self-hosting.
+
+    All endpoints require authentication via Bearer token unless otherwise noted.
+    Base URL: https://api.intent.chat/v1
+  contact:
+    name: Intent Team
+    url: https://github.com/IntentAi/intent-protocol
+
+servers:
+  - url: https://api.intent.chat/v1
+    description: Production server
+  - url: http://localhost:8080/api/v1
+    description: Local development
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: User token (usr_*) or bot token (bot_*)
+
+  schemas:
+    Snowflake:
+      type: string
+      pattern: '^[0-9]+$'
+      description: 64-bit integer as string, sortable by timestamp
+      example: "1234567890123456789"
+
+    Timestamp:
+      type: string
+      format: date-time
+      description: ISO 8601 timestamp in UTC
+      example: "2024-01-15T12:00:00Z"
+
+    User:
+      type: object
+      required:
+        - id
+        - username
+        - display_name
+        - created_at
+      properties:
+        id:
+          $ref: '#/components/schemas/Snowflake'
+        username:
+          type: string
+          minLength: 2
+          maxLength: 32
+          pattern: '^[a-z0-9_]+$'
+          description: Unique username (lowercase, alphanumeric, underscores)
+          example: "alice_123"
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 32
+          description: Display name (can contain unicode, spaces)
+          example: "Alice"
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Avatar image URL
+          example: "https://cdn.intent.chat/avatars/abc123.png"
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    Server:
+      type: object
+      required:
+        - id
+        - name
+        - owner_id
+        - member_count
+        - created_at
+      properties:
+        id:
+          $ref: '#/components/schemas/Snowflake'
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          description: Server name
+          example: "My Server"
+        owner_id:
+          $ref: '#/components/schemas/Snowflake'
+        icon_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Server icon URL
+          example: "https://cdn.intent.chat/icons/def456.png"
+        description:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: Server description
+          example: "A cool community server"
+        member_count:
+          type: integer
+          minimum: 1
+          description: Total member count
+          example: 42
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    Channel:
+      type: object
+      required:
+        - id
+        - server_id
+        - name
+        - type
+        - position
+        - created_at
+      properties:
+        id:
+          $ref: '#/components/schemas/Snowflake'
+        server_id:
+          $ref: '#/components/schemas/Snowflake'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Channel name
+          example: "general"
+        type:
+          type: integer
+          enum: [0, 1, 2]
+          description: "0 = text, 1 = voice, 2 = category"
+          example: 0
+        topic:
+          type: string
+          maxLength: 1024
+          nullable: true
+          description: Channel topic
+          example: "General discussion"
+        position:
+          type: integer
+          minimum: 0
+          description: Display position in channel list
+          example: 0
+        parent_id:
+          allOf:
+            - $ref: '#/components/schemas/Snowflake'
+            - nullable: true
+          description: Parent category ID
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    Message:
+      type: object
+      required:
+        - id
+        - channel_id
+        - author
+        - content
+        - created_at
+      properties:
+        id:
+          $ref: '#/components/schemas/Snowflake'
+        channel_id:
+          $ref: '#/components/schemas/Snowflake'
+        author:
+          $ref: '#/components/schemas/User'
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Message text content
+          example: "Hello world!"
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        edited_at:
+          allOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - nullable: true
+          description: Last edit timestamp
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attachment'
+          maxItems: 10
+          default: []
+        embeds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Embed'
+          maxItems: 10
+          default: []
+
+    Attachment:
+      type: object
+      required:
+        - id
+        - filename
+        - size
+        - url
+      properties:
+        id:
+          $ref: '#/components/schemas/Snowflake'
+        filename:
+          type: string
+          maxLength: 256
+          example: "image.png"
+        size:
+          type: integer
+          minimum: 0
+          maximum: 104857600
+          description: File size in bytes (max 100MB for bots, 25MB for users)
+          example: 524288
+        url:
+          type: string
+          format: uri
+          description: File download URL
+          example: "https://cdn.intent.chat/attachments/abc123.png"
+        content_type:
+          type: string
+          description: MIME type
+          example: "image/png"
+        width:
+          type: integer
+          nullable: true
+          description: Image/video width in pixels
+        height:
+          type: integer
+          nullable: true
+          description: Image/video height in pixels
+
+    Embed:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 256
+          example: "Embed Title"
+        description:
+          type: string
+          maxLength: 4096
+          example: "Embed description text"
+        url:
+          type: string
+          format: uri
+          example: "https://example.com"
+        color:
+          type: integer
+          minimum: 0
+          maximum: 16777215
+          description: RGB color as integer
+          example: 3447003
+        timestamp:
+          $ref: '#/components/schemas/Timestamp'
+        footer:
+          type: object
+          properties:
+            text:
+              type: string
+              maxLength: 2048
+            icon_url:
+              type: string
+              format: uri
+        image:
+          type: object
+          properties:
+            url:
+              type: string
+              format: uri
+        thumbnail:
+          type: object
+          properties:
+            url:
+              type: string
+              format: uri
+        author:
+          type: object
+          properties:
+            name:
+              type: string
+              maxLength: 256
+            url:
+              type: string
+              format: uri
+            icon_url:
+              type: string
+              format: uri
+        fields:
+          type: array
+          maxItems: 25
+          items:
+            type: object
+            required:
+              - name
+              - value
+            properties:
+              name:
+                type: string
+                maxLength: 256
+              value:
+                type: string
+                maxLength: 1024
+              inline:
+                type: boolean
+                default: false
+
+    Role:
+      type: object
+      required:
+        - id
+        - server_id
+        - name
+        - permissions
+        - position
+        - color
+      properties:
+        id:
+          $ref: '#/components/schemas/Snowflake'
+        server_id:
+          $ref: '#/components/schemas/Snowflake'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: "Moderator"
+        permissions:
+          type: string
+          pattern: '^[0-9]+$'
+          description: Permission bitfield as string
+          example: "2048"
+        position:
+          type: integer
+          minimum: 0
+          description: Role hierarchy position (higher = more powerful)
+          example: 5
+        color:
+          type: integer
+          minimum: 0
+          maximum: 16777215
+          description: RGB color as integer
+          example: 3447003
+        hoist:
+          type: boolean
+          description: Display members separately in sidebar
+          default: false
+        mentionable:
+          type: boolean
+          description: Allow anyone to @mention this role
+          default: false
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    Member:
+      type: object
+      required:
+        - user
+        - server_id
+        - joined_at
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        server_id:
+          $ref: '#/components/schemas/Snowflake'
+        nickname:
+          type: string
+          maxLength: 32
+          nullable: true
+          description: Server-specific nickname
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Snowflake'
+          description: Role IDs
+        joined_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    Error:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: "Missing Access"
+        code:
+          type: string
+          description: Machine-readable error code
+          example: "MISSING_ACCESS"
+        retry_after:
+          type: number
+          format: float
+          description: Seconds to wait before retrying (rate limits only)
+          example: 4.5
+        global:
+          type: boolean
+          description: Whether error affects all requests (rate limits only)
+          example: false
+
+    CreateServerRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        icon:
+          type: string
+          format: byte
+          description: Base64-encoded image data
+        description:
+          type: string
+          maxLength: 500
+
+    UpdateServerRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+
+    CreateChannelRequest:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        type:
+          type: integer
+          enum: [0, 1, 2]
+        topic:
+          type: string
+          maxLength: 1024
+        position:
+          type: integer
+          minimum: 0
+
+    UpdateChannelRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        topic:
+          type: string
+          maxLength: 1024
+        position:
+          type: integer
+          minimum: 0
+
+    CreateMessageRequest:
+      type: object
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        embeds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Embed'
+          maxItems: 10
+      anyOf:
+        - required: [content]
+        - required: [embeds]
+
+    UpdateMessageRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Invalid request body"
+            code: "BAD_REQUEST"
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Invalid or missing token"
+            code: "UNAUTHORIZED"
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Missing Access"
+            code: "MISSING_ACCESS"
+
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Resource not found"
+            code: "NOT_FOUND"
+
+    RateLimited:
+      description: Rate limited
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "You are being rate limited."
+            code: "RATE_LIMIT_EXCEEDED"
+            retry_after: 4.5
+            global: false
+
+paths:
+  /servers/{server_id}:
+    get:
+      summary: Get server
+      operationId: getServer
+      tags: [Servers]
+      parameters:
+        - name: server_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+      responses:
+        '200':
+          description: Server object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Server'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update server
+      operationId: updateServer
+      tags: [Servers]
+      parameters:
+        - name: server_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateServerRequest'
+      responses:
+        '200':
+          description: Updated server object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Server'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete server
+      operationId: deleteServer
+      tags: [Servers]
+      parameters:
+        - name: server_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+      responses:
+        '204':
+          description: Server deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /servers:
+    post:
+      summary: Create server
+      operationId: createServer
+      tags: [Servers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateServerRequest'
+      responses:
+        '201':
+          description: Created server object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Server'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /channels/{channel_id}:
+    get:
+      summary: Get channel
+      operationId: getChannel
+      tags: [Channels]
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+      responses:
+        '200':
+          description: Channel object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update channel
+      operationId: updateChannel
+      tags: [Channels]
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateChannelRequest'
+      responses:
+        '200':
+          description: Updated channel object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete channel
+      operationId: deleteChannel
+      tags: [Channels]
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+      responses:
+        '204':
+          description: Channel deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /servers/{server_id}/channels:
+    post:
+      summary: Create channel
+      operationId: createChannel
+      tags: [Channels]
+      parameters:
+        - name: server_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChannelRequest'
+      responses:
+        '201':
+          description: Created channel object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /channels/{channel_id}/messages:
+    get:
+      summary: List messages
+      operationId: listMessages
+      tags: [Messages]
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: before
+          in: query
+          description: Get messages before this ID
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+        - name: after
+          in: query
+          description: Get messages after this ID
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+      responses:
+        '200':
+          description: Array of message objects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Message'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      summary: Create message
+      operationId: createMessage
+      tags: [Messages]
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMessageRequest'
+      responses:
+        '201':
+          description: Created message object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /channels/{channel_id}/messages/{message_id}:
+    get:
+      summary: Get message
+      operationId: getMessage
+      tags: [Messages]
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+        - name: message_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+      responses:
+        '200':
+          description: Message object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update message
+      operationId: updateMessage
+      tags: [Messages]
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+        - name: message_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMessageRequest'
+      responses:
+        '200':
+          description: Updated message object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete message
+      operationId: deleteMessage
+      tags: [Messages]
+      parameters:
+        - name: channel_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+        - name: message_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Snowflake'
+      responses:
+        '204':
+          description: Message deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+tags:
+  - name: Servers
+    description: Server management operations
+  - name: Channels
+    description: Channel management operations
+  - name: Messages
+    description: Message operations
