@@ -84,7 +84,7 @@ The server dispatches an event to the client. Used for all real-time events like
 
 **Direction:** Client → Server
 
-The client sends this periodically to keep the connection alive. The server responds with Heartbeat ACK (opcode 10).
+The client sends this periodically to keep the connection alive. The server responds with Heartbeat ACK (opcode 11).
 
 **Payload structure:**
 
