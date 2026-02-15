@@ -75,10 +75,17 @@ REST API endpoint equivalences between Intent and Discord.
 |--------|---------|--------|
 | `POST /channels/:id/webhooks` | `POST /channels/:id/webhooks` | Planned |
 | `GET /channels/:id/webhooks` | `GET /channels/:id/webhooks` | Planned |
+| `GET /servers/:id/webhooks` | `GET /guilds/:id/webhooks` | Planned |
 | `GET /webhooks/:id` | `GET /webhooks/:id` | Planned |
+| `GET /webhooks/:id/:token` | `GET /webhooks/:id/:token` | Planned |
 | `PATCH /webhooks/:id` | `PATCH /webhooks/:id` | Planned |
+| `PATCH /webhooks/:id/:token` | `PATCH /webhooks/:id/:token` | Planned |
 | `DELETE /webhooks/:id` | `DELETE /webhooks/:id` | Planned |
+| `DELETE /webhooks/:id/:token` | `DELETE /webhooks/:id/:token` | Planned |
 | `POST /webhooks/:id/:token` | `POST /webhooks/:id/:token` | Planned |
+| `GET /webhooks/:id/:token/messages/:msg_id` | `GET /webhooks/:id/:token/messages/:msg_id` | Planned |
+| `PATCH /webhooks/:id/:token/messages/:msg_id` | `PATCH /webhooks/:id/:token/messages/:msg_id` | Planned |
+| `DELETE /webhooks/:id/:token/messages/:msg_id` | `DELETE /webhooks/:id/:token/messages/:msg_id` | Planned |
 
 ## Roles
 
