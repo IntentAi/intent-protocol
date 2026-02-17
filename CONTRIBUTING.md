@@ -1,31 +1,46 @@
 # Contributing to Intent Protocol
 
-Documentation contributions are welcome!
+This repo is specification only — no implementation code. Getting it right matters more than getting it done fast.
 
-## What Goes Here
+## Before You Start
 
-This repository contains **specification only** - no implementation code.
+Check the [issues](https://github.com/IntentAi/intent-protocol/issues). Pay attention to **blocking relationships** on the right side — some specs depend on others being finalized first. If you find a gap or inconsistency, open an issue before submitting a fix, especially for anything touching wire format or protocol behavior.
 
-- REST API specs (OpenAPI format)
-- WebSocket protocol documentation
-- Voice/WebRTC specifications
-- E2EE protocol specs
-- Webhook formats
-- Discord API mapping tables
+## Branching
 
-## How to Contribute
+Work is grouped by phase. Branch off the current phase branch (check the repo or ask a maintainer):
 
-1. Fork this repository
-2. Add or update specifications
-3. Open a pull request
+```
+git checkout <phase-branch> && git pull origin <phase-branch>
+git checkout -b <phase-branch>/8-rate-limit-headers
+```
 
-## Documentation Standards
+No phase branch? Use `feat/<issue>-description` off `dev`. PR against the **phase branch**, not dev or main.
 
-- Use Markdown
-- Include examples
-- Keep it implementation-agnostic
-- Reference RFCs where applicable
+## Writing Specs
+
+- Be precise. Vague specs lead to incompatible implementations.
+- Include request/response examples with realistic data.
+- Document error cases, not just happy paths.
+- Reference RFCs where applicable.
+- Implementation-agnostic. Describe the protocol, not how to code it.
+- snake_case for all field names. No emojis.
+
+## Commits
+
+Use `docs` as the commit type. Reference the issue. Explain what changed and why — protocol changes ripple into every implementation.
+
+```
+docs(gateway): define reconnection backoff intervals [refs #8]
+
+Specified exponential backoff with jitter for reconnection.
+Base 1s, max 60s, full jitter. Matches existing server behavior.
+```
+
+## Review
+
+Expect scrutiny on PRs. Every spec change affects the server, web client, and both bot SDKs.
 
 ## License
 
-All documentation is MIT licensed.
+MIT

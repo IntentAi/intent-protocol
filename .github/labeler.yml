@@ -1,0 +1,15 @@
+rest-api:
+  - changed-files:
+      - any-glob-to-any-file: "rest-api/**"
+
+gateway:
+  - changed-files:
+      - any-glob-to-any-file: "gateway/**"
+
+voice:
+  - changed-files:
+      - any-glob-to-any-file: "voice/**"
+
+schema:
+  - changed-files:
+      - any-glob-to-any-file: "schemas/**"
