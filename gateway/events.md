@@ -373,7 +373,7 @@ Dispatched when a user's presence changes.
 
 ### VOICE_STATE_UPDATE
 
-Dispatched when someone joins, leaves, or updates voice state.
+Dispatched when someone joins, leaves, or changes voice state in a server you're in. Broadcast to all members of the server.
 
 **Planned payload:**
 
@@ -381,27 +381,123 @@ Dispatched when someone joins, leaves, or updates voice state.
 {
   user_id: string,
   server_id: string,
-  channel_id: string | null,  // null if leaving
+  channel_id: string | null,  // null when disconnecting
+  session_id: string,         // stable across mute/deaf toggles, changes on rejoin
   self_mute: boolean,
   self_deaf: boolean,
-  server_mute: boolean,
-  server_deaf: boolean
+  server_mute: boolean,       // set by MUTE_MEMBERS permission holders
+  server_deaf: boolean        // set by DEAFEN_MEMBERS permission holders
 }
 ```
 
+**Example — user joins voice:**
+
+```json
+{
+  "op": 0,
+  "t": "VOICE_STATE_UPDATE",
+  "s": 58,
+  "d": {
+    "user_id": "9876543210",
+    "server_id": "1234567890",
+    "channel_id": "5555555555",
+    "session_id": "vs_f7a2c1d8e3b9",
+    "self_mute": false,
+    "self_deaf": false,
+    "server_mute": false,
+    "server_deaf": false
+  }
+}
+```
+
+**Example — user disconnects:**
+
+```json
+{
+  "op": 0,
+  "t": "VOICE_STATE_UPDATE",
+  "s": 59,
+  "d": {
+    "user_id": "9876543210",
+    "server_id": "1234567890",
+    "channel_id": null,
+    "session_id": "vs_f7a2c1d8e3b9",
+    "self_mute": false,
+    "self_deaf": false,
+    "server_mute": false,
+    "server_deaf": false
+  }
+}
+```
+
+**Triggers:**
+- User sends opcode 4 to join, move, or leave a voice channel
+- User toggles self-mute or self-deaf
+- Admin mutes/deafens a user (requires `MUTE_MEMBERS` / `DEAFEN_MEMBERS`)
+- Admin moves a user to another channel (requires `MOVE_MEMBERS`)
+- User disconnects ungracefully (SFU timeout after 15 seconds)
+
 ### VOICE_SERVER_UPDATE
 
-Dispatched to provide voice connection info.
+Dispatched privately to a user after they send opcode 4 to join a voice channel. Contains everything needed to establish the WebRTC connection with the SFU.
 
 **Planned payload:**
 
 ```typescript
 {
   server_id: string,
-  endpoint: string,    // Voice server URL
-  token: string        // Voice connection token
+  channel_id: string,
+  endpoint: string,          // SFU WebSocket URL
+  token: string,             // single-use voice token, valid 60 seconds
+  ice_servers: IceServer[]   // STUN/TURN configuration for NAT traversal
 }
 ```
+
+**IceServer structure:**
+
+```typescript
+{
+  urls: string[],            // e.g. ["stun:stun.intent.chat:3478"]
+  username?: string,         // TURN only, time-limited credential
+  credential?: string        // TURN only, HMAC-based secret
+}
+```
+
+**Example:**
+
+```json
+{
+  "op": 0,
+  "t": "VOICE_SERVER_UPDATE",
+  "s": 59,
+  "d": {
+    "server_id": "1234567890",
+    "channel_id": "5555555555",
+    "endpoint": "wss://us-east.voice.intent.chat",
+    "token": "vt_a8f3bc91d2e4...",
+    "ice_servers": [
+      {
+        "urls": ["stun:stun.intent.chat:3478"]
+      },
+      {
+        "urls": [
+          "turn:turn.intent.chat:3478?transport=udp",
+          "turn:turn.intent.chat:443?transport=tcp"
+        ],
+        "username": "1708012800:user_9876543210",
+        "credential": "a1b2c3d4e5f6..."
+      }
+    ]
+  }
+}
+```
+
+**Notes:**
+- Only sent to the user who requested the voice connection, not broadcast.
+- The `token` is a signed JWT binding user + server + channel. Must be included in the first opcode 12 offer.
+- If the token expires before use, send opcode 4 again to get a fresh one.
+- TURN credentials are time-limited (12 hour TTL). TCP on port 443 is a fallback for restrictive networks.
+- See `voice/signaling.md` for the full connection flow after receiving this event.
 
 ### MEMBER_ADD
 
