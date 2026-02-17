@@ -334,13 +334,13 @@ Authorization: Bearer <token>
   {
     "id": "us-east",
     "name": "US East",
-    "endpoint": "us-east.voice.intent.chat",
+    "endpoint": "wss://us-east.voice.intent.chat",
     "deprecated": false
   },
   {
     "id": "eu-west",
     "name": "EU West",
-    "endpoint": "eu-west.voice.intent.chat",
+    "endpoint": "wss://eu-west.voice.intent.chat",
     "deprecated": false
   }
 ]
