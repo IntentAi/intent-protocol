@@ -16,13 +16,14 @@ All requests require a bearer token:
 Authorization: Bearer <token>
 ```
 
+See [authentication.md](authentication.md) for token types, permission bitfields, and OAuth2 flow.
+
 ## Documentation
 
-- [**Core Resources**](resources.md) - Servers, Channels, Messages (full CRUD operations)
-- **Rate Limiting** - In development
-- **User Operations** - In development
-- **Role Management** - In development
+- [**Resources**](resources.md) — Servers, channels, messages with full CRUD operations
+- [**Authentication**](authentication.md) — Token formats, permission system, OAuth2 outline
+- [**Rate Limiting**](rate-limiting.md) — Per-route buckets, global limits, retry headers
 
 ## OpenAPI Specification
 
-OpenAPI 3.0 schema in development.
+Machine-readable OpenAPI 3.1 spec available at [`schemas/openapi.yaml`](../schemas/openapi.yaml). Use it for code generation, type extraction, and request validation.
