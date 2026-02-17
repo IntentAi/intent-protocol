@@ -454,22 +454,100 @@ The server acknowledges receipt of a heartbeat.
 
 **Status:** Not yet implemented.
 
-WebRTC signaling for voice connections (SDP offers/answers, ICE candidates).
+Carries WebRTC signaling between client and the SFU, relayed through the gateway. All voice negotiation — SDP offers/answers, ICE candidates, renegotiation, and speaking state — flows through this opcode.
 
-**Planned payload:**
+**Base payload:**
 
 ```typescript
 {
   op: 12,
   d: {
-    type: "offer" | "answer" | "ice",
-    sdp?: string,
-    candidate?: any
+    type: "offer" | "answer" | "ice" | "renegotiate" | "speaking",
+    // remaining fields depend on type
   }
 }
 ```
 
-See voice/signaling.md for full WebRTC flow when implemented.
+**Sub-types:**
+
+| Type | Direction | Purpose |
+|------|-----------|---------|
+| `offer` | Client -> Server | SDP offer to initiate or update WebRTC session |
+| `answer` | Server -> Client | SDP answer in response to an offer |
+| `ice` | Bidirectional | ICE candidate exchange |
+| `renegotiate` | Server -> Client | New SDP offer when participants join/leave |
+| `speaking` | Server -> Client | Speaking state change for a user |
+
+**type: "offer" payload:**
+
+```typescript
+{
+  op: 12,
+  d: {
+    type: "offer",
+    sdp: string,            // full SDP offer
+    voice_token: string     // from VOICE_SERVER_UPDATE, valid 60s
+  }
+}
+```
+
+**type: "answer" payload:**
+
+```typescript
+{
+  op: 12,
+  d: {
+    type: "answer",
+    sdp: string             // full SDP answer
+  }
+}
+```
+
+**type: "ice" payload:**
+
+```typescript
+{
+  op: 12,
+  d: {
+    type: "ice",
+    candidate: string,      // ICE candidate string
+    sdp_mid: string,        // media stream identification
+    sdp_mline_index: number // m= line index
+  }
+}
+```
+
+**type: "renegotiate" payload:**
+
+```typescript
+{
+  op: 12,
+  d: {
+    type: "renegotiate",
+    sdp: string,            // new SDP offer from server
+    reason: "participant_joined" | "participant_left" | "track_update"
+  }
+}
+```
+
+**type: "speaking" payload:**
+
+```typescript
+{
+  op: 12,
+  d: {
+    type: "speaking",
+    user_id: string,
+    speaking: boolean
+  }
+}
+```
+
+**Notes:**
+- The `voice_token` in the offer is a single-use JWT binding user + server + channel. Expires after 60 seconds.
+- Renegotiation happens server-initiated when participants join or leave. Client must respond with an answer.
+- Speaking state is determined server-side via RTP audio level headers (RFC 6464) with 300ms debounce.
+- See `voice/signaling.md` for the complete connection lifecycle and `voice/codecs.md` for codec requirements.
 
 ## Connection Lifecycle
 

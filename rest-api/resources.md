@@ -139,7 +139,7 @@ Returns a channel object.
 **Channel Types:**
 - `0` - Text channel
 - `1` - Voice channel
-- `2` - Announcement channel
+- `2` - Category
 
 **Errors:**
 - `401 Unauthorized` - Invalid or missing token
@@ -167,7 +167,7 @@ Creates a channel within a server. Requires `MANAGE_CHANNELS` permission.
 
 **Fields:**
 - `name` (string, required) - Channel name, 2-100 characters
-- `type` (integer, required) - Channel type (0 = text, 1 = voice, 2 = announcement)
+- `type` (integer, required) - Channel type (0 = text, 1 = voice, 2 = category)
 - `topic` (string, optional) - Channel topic, max 1024 characters
 - `position` (integer, optional) - Sorting position, defaults to bottom
 
