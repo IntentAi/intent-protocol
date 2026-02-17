@@ -10,7 +10,20 @@ End-to-end encryption for DMs and group DMs using the Message Layer Security pro
 - IETF standard with formal security proofs
 - Supports async member addition via key packages
 
-Intent uses the `openmls` crate server-side. The mandated ciphersuite is `MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519` (X25519 DHKEM, AES-128-GCM, SHA-256, Ed25519).
+Intent uses the `openmls` crate server-side with `openmls_rust_crypto` backend.
+
+## Ciphersuite
+
+**MVP ciphersuite:** `MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519` (0x0001)
+
+| Component | Algorithm |
+|-----------|-----------|
+| KEM | X25519 DHKEM |
+| AEAD | AES-128-GCM |
+| Hash | SHA-256 |
+| Signature | Ed25519 |
+
+All key packages, groups, and messages use this single ciphersuite. The server rejects key packages with any other ciphersuite ID. This keeps the MVP simple — ciphersuite negotiation and post-quantum hybrids are roadmap items (see [Future Enhancements](#future-enhancements)).
 
 ## Encrypted Channel Types
 
@@ -104,6 +117,7 @@ Uploads one or more key packages for the authenticated client.
 - The server validates each key package: correct ciphersuite, valid signature, not expired
 - Key packages with unsupported ciphersuites are rejected
 - Clients should upload 50-100 key packages at registration and replenish when low
+- One key package per device should be marked as a **last resort** key package (MLS `last_resort` extension). Last resort packages are never deleted when claimed — they're reused indefinitely as a fallback when all other packages are exhausted. This prevents a scenario where a device becomes completely unreachable because its pool ran dry.
 
 ### Claim Key Packages
 
@@ -204,6 +218,46 @@ Returns the channel object. The channel is created with `mls_initialized: false`
 - `401 Unauthorized` - Invalid or missing token
 - `404 Not Found` - One or more recipients do not exist
 
+### Add Member to Group DM
+
+```
+PUT /channels/{channel_id}/recipients/{user_id}
+```
+
+Adds a user to an existing group DM (type 4 only). Only the group DM owner can add members. Maximum 10 participants.
+
+**Response: 204 No Content**
+
+**Side effects:**
+- The calling client must follow up with a Commit via `POST /channels/{channel_id}/mls/commit` that includes the new member's key packages and a Welcome message
+- Server will not deliver `MLS_WELCOME` to the new member until the Commit is received
+
+**Errors:**
+- `400 Bad Request` - Channel is type 3 (1:1 DMs cannot add members) or max participants reached
+- `401 Unauthorized` - Invalid or missing token
+- `403 Forbidden` - Not the group DM owner
+- `404 Not Found` - Channel or user does not exist
+
+### Remove Member from Group DM
+
+```
+DELETE /channels/{channel_id}/recipients/{user_id}
+```
+
+Removes a user from a group DM. The owner can remove anyone; non-owners can only remove themselves (leave).
+
+**Response: 204 No Content**
+
+**Side effects:**
+- The calling client must follow up with a Commit that removes the member's leaves from the MLS group, triggering key rotation so the removed member cannot decrypt future messages
+- If the owner leaves, ownership transfers to the longest-tenured remaining member
+
+**Errors:**
+- `400 Bad Request` - Cannot remove the last member (delete the channel instead)
+- `401 Unauthorized` - Invalid or missing token
+- `403 Forbidden` - Non-owner trying to remove someone else
+- `404 Not Found` - Channel or user does not exist
+
 ## MLS Group Initialization
 
 After creating a DM channel, the initiating client sets up the MLS group and distributes key material.
@@ -279,7 +333,7 @@ Alice                           Server                          Bob
   |  { commit, welcome,           |                               |
   |    group_info }               |                               |
   |------------------------------>|                               |
-  |  200: initialized             |  MLS_WELCOME event            |
+  |  201: initialized             |  MLS_WELCOME event            |
   |<------------------------------|-------- dispatch ------------>|
   |                               |                               |
   |                               |              (process Welcome, |
@@ -430,6 +484,77 @@ DELETE /channels/{channel_id}/messages/{message_id}
 ```
 
 The server deletes the ciphertext blob. `MESSAGE_DELETE` fires with just the message and channel IDs.
+
+### Message Padding
+
+MLS ciphertext leaks approximate plaintext length. Without padding, an observer can distinguish "yes" from a paragraph. Clients must pad the plaintext before encryption.
+
+**Policy:** Pad all messages to the nearest 256-byte boundary (minimum 256 bytes). OpenMLS supports this via `padding_size` in the group configuration:
+
+```rust
+MlsGroup::builder()
+    .padding_size(256)
+    // ...
+```
+
+This adds at most 255 bytes of overhead per message — negligible for a messaging app but enough to obscure whether someone sent a short reply or a longer message.
+
+### Encrypted Attachments
+
+Files, images, and other attachments in encrypted channels use a two-layer approach:
+
+1. **Client encrypts the file** with a random 256-bit AES-GCM key (the "file key")
+2. **Client uploads the encrypted blob** to the CDN via the standard attachment upload endpoint
+3. **Client sends an MLS-encrypted message** containing the file key, CDN URL, filename, size, and MIME type
+
+The MLS ApplicationMessage plaintext for an attachment:
+
+```json
+{
+  "type": "attachment",
+  "content": "optional caption text",
+  "attachments": [
+    {
+      "filename": "photo.jpg",
+      "content_type": "image/jpeg",
+      "size": 524288,
+      "url": "https://cdn.intent.chat/attachments/enc_abc123",
+      "encryption": {
+        "key": "<base64 AES-256-GCM key>",
+        "iv": "<base64 initialization vector>",
+        "digest": "<base64 SHA-256 hash of plaintext file>"
+      }
+    }
+  ]
+}
+```
+
+The server and CDN only see encrypted blobs. The file key is only available inside the MLS ciphertext, so only group members can decrypt attachments.
+
+**Upload flow:**
+
+```
+1. Client generates random AES-256-GCM key and IV
+2. Client encrypts the file: AES-256-GCM(key, iv, plaintext_file)
+3. Client uploads encrypted blob: POST /channels/{channel_id}/attachments
+   Server returns CDN URL
+4. Client builds the attachment JSON above
+5. Client encrypts the JSON via MLS: group.create_message(json)
+6. Client sends: POST /channels/{channel_id}/messages { "mls_ciphertext": "..." }
+```
+
+Recipients decrypt the MLS message, extract the file key, download the encrypted blob from the CDN URL, and decrypt it with the file key. The `digest` field lets clients verify file integrity after decryption.
+
+### Message History for New Devices
+
+MLS does not provide access to messages encrypted before a device joined the group. This is by design — it's a consequence of forward secrecy.
+
+When a new device is added to an existing encrypted channel:
+- It can only decrypt messages sent **after** it joined the group
+- Historical messages remain inaccessible to the new device
+- Clients should display a clear marker: "Messages before this point are not available on this device"
+
+An existing device on the same account may optionally re-encrypt and transfer message history to the new device over a separate E2EE session between the two devices. This is a client-side feature, not a protocol requirement, and is a roadmap item.
 
 ## Key Rotation and Group State Management
 
@@ -828,6 +953,18 @@ This lets other group members associate leaves with specific devices and users.
 - Derive group keys or session keys
 - Determine anything about message content from the ciphertext
 
+### Metadata Limitations
+
+MLS encrypts message **content** but not **metadata**. The server can observe:
+
+- Who is messaging whom (channel membership is plaintext)
+- Message timestamps and frequency
+- Approximate message size (mitigated by padding, not eliminated)
+- Which devices are active in a group
+- When key rotations happen
+
+This is an inherent limitation of a client-server architecture where the server routes messages. Sealed sender (hiding the sender from the server) and private membership (hiding who's in a group) are research-level problems tracked in the roadmap.
+
 ### Threat Model
 
 The server operates under an **honest-but-curious** adversary model. It routes messages correctly but may attempt to read content. MLS guarantees:
@@ -886,6 +1023,8 @@ If `GET /users/{user_id}/mls/key-packages` returns a response where some devices
 | `GET` | `/users/{user_id}/mls/key-packages` | Claim key packages (one per device) | Planned |
 | `GET` | `/users/@me/mls/key-packages/count` | Check remaining key package counts | Planned |
 | `POST` | `/users/@me/channels` | Create DM or group DM channel | Planned |
+| `PUT` | `/channels/{channel_id}/recipients/{user_id}` | Add member to group DM | Planned |
+| `DELETE` | `/channels/{channel_id}/recipients/{user_id}` | Remove member / leave group DM | Planned |
 | `POST` | `/channels/{channel_id}/mls/init` | Initialize MLS group on a channel | Planned |
 | `POST` | `/channels/{channel_id}/mls/commit` | Submit MLS Commit | Planned |
 | `POST` | `/channels/{channel_id}/mls/proposal` | Submit MLS Proposal | Planned |
@@ -912,3 +1051,17 @@ Endpoints use the `/mls/` path namespace to separate encryption operations from 
 - If a client loses its local MLS state, it must be re-added to groups via the removal + re-add flow
 - Key packages should use a 90-day expiration; clients should rotate before expiry
 - The server should reject key packages with unsupported extensions to maintain interoperability
+
+## Future Enhancements
+
+Features tracked for post-MVP phases. None of these block the initial E2EE launch.
+
+| Feature | Description | Phase |
+|---------|-------------|-------|
+| Post-quantum ciphersuites | Hybrid ML-KEM-768 + X25519 ciphersuite (draft-ietf-mls-pq-ciphersuites) to defend against harvest-now-decrypt-later. OpenMLS already supports X-Wing. Requires ciphersuite negotiation in key packages. | Phase 3 |
+| Key verification | Out-of-band identity verification (safety numbers / QR codes) so users can confirm they're talking to the right person, not a MITM. | Phase 3 |
+| Message franking | Abuse reporting without breaking E2EE. Sender attaches a frankable tag that a recipient can reveal to the server to prove a message was sent, without exposing the content to the server preemptively. Based on MLS extensions draft. | Phase 3 |
+| Sealed sender | Hide the sender's identity from the server so it can't observe who messages whom. Requires an anonymous submission protocol layered on top of MLS. Research-level. | Phase 5 |
+| Encrypted server channels | Extend MLS E2EE beyond DMs to opt-in server text channels. Significantly more complex due to larger groups and permission models. | Phase 3 |
+| Message history transfer | Allow an existing device to re-encrypt and transfer message history to a new device on the same account over a separate E2EE session. | Phase 4 |
+| Ciphersuite negotiation | Support multiple ciphersuites with automatic negotiation based on key package capabilities. Required before adding PQ suites. | Phase 3 |
